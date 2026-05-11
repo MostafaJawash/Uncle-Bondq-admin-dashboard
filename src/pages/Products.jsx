@@ -74,8 +74,8 @@ export default function Products() {
     const [productResult, categoryResult, productTypeResult, sectionResult] = await Promise.all([
       supabase.from('products').select('*, categories(name), product_types(name), sections(name)').order('name', { ascending: true }),
       supabase.from('categories').select('*').order('name', { ascending: true }),
-      supabase.from('product_types').select('id, name').order('name', { ascending: true }),
-      supabase.from('sections').select('id, name').order('name', { ascending: true }),
+      supabase.from('product_types').select('id, name, category_id').order('name', { ascending: true }),
+      supabase.from('sections').select('id, name, category_id, type_id').order('name', { ascending: true }),
     ])
 
     if (productResult.error) setError(productResult.error.message)
@@ -164,9 +164,26 @@ export default function Products() {
     }))
   }, [filteredProducts, getCategoryName, getProductTypeName])
 
+  const selectedCategoryId = form.category_id
+
+  const availableProductTypes = useMemo(() => {
+    if (!selectedCategoryId) return []
+
+    return productTypes.filter((type) => String(type.category_id) === String(selectedCategoryId))
+  }, [productTypes, selectedCategoryId])
+
+  const availableSections = useMemo(() => {
+    if (!selectedCategoryId || !form.type_id) return []
+
+    return sections.filter((section) => (
+      String(section.category_id) === String(selectedCategoryId)
+      && String(section.type_id) === String(form.type_id)
+    ))
+  }, [sections, selectedCategoryId, form.type_id])
+
   const openCreate = () => {
     setEditing(null)
-    setForm({ ...initialForm, category_id: categories[0]?.id || '', type_id: productTypes[0]?.id || '', section_id: sections[0]?.id || '' })
+    setForm(initialForm)
     setFiles([])
     setModalOpen(true)
   }
@@ -251,6 +268,9 @@ export default function Products() {
     setError('')
 
     try {
+      if (!form.category_id) {
+        throw new Error(t('products.categoryRequired'))
+      }
       if (!form.type_id) {
         throw new Error(t('products.typeRequired'))
       }
@@ -425,6 +445,43 @@ export default function Products() {
 
       <Modal open={modalOpen} title={editing ? t('products.edit') : t('products.add')} onClose={() => setModalOpen(false)} size="max-w-3xl">
         <form className="grid gap-4" onSubmit={saveProduct}>
+          <FormField label={t('common.category')}>
+            <select
+              className="field"
+              value={form.category_id}
+              onChange={(event) => setForm((current) => ({ ...current, category_id: event.target.value, type_id: '', section_id: '' }))}
+              required
+            >
+              <option value="">{t('products.chooseCategory')}</option>
+              {categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
+            </select>
+          </FormField>
+          <div className="grid gap-4 md:grid-cols-2">
+            <FormField label={t('common.type')}>
+              <select
+                className="field"
+                value={form.type_id}
+                onChange={(event) => setForm((current) => ({ ...current, type_id: event.target.value, section_id: '' }))}
+                required
+                disabled={!form.category_id}
+              >
+                <option value="">{t('products.chooseType')}</option>
+                {availableProductTypes.map((type) => <option key={type.id} value={type.id}>{type.name}</option>)}
+              </select>
+            </FormField>
+            <FormField label={t('common.section')}>
+              <select
+                className="field"
+                value={form.section_id}
+                onChange={(event) => updateForm('section_id', event.target.value)}
+                required
+                disabled={!form.category_id || !form.type_id}
+              >
+                <option value="">{t('products.chooseSection')}</option>
+                {availableSections.map((section) => <option key={section.id} value={section.id}>{section.name}</option>)}
+              </select>
+            </FormField>
+          </div>
           <div className="grid gap-4 md:grid-cols-2">
             <FormField label={t('common.name')}>
               <input className="field" value={form.name} onChange={(event) => updateForm('name', event.target.value)} required />
@@ -435,25 +492,7 @@ export default function Products() {
             <FormField label={t('common.weight')}>
               <input className="field" value={form.weight} onChange={(event) => updateForm('weight', event.target.value)} placeholder="500g" />
             </FormField>
-            <FormField label={t('common.type')}>
-              <select className="field" value={form.type_id} onChange={(event) => updateForm('type_id', event.target.value)} required>
-                <option value="">{t('products.noType')}</option>
-                {productTypes.map((type) => <option key={type.id} value={type.id}>{type.name}</option>)}
-              </select>
-            </FormField>
-            <FormField label={t('common.section')}>
-              <select className="field" value={form.section_id} onChange={(event) => updateForm('section_id', event.target.value)} required>
-                <option value="">{t('products.noSection')}</option>
-                {sections.map((section) => <option key={section.id} value={section.id}>{section.name}</option>)}
-              </select>
-            </FormField>
           </div>
-          <FormField label={t('common.category')}>
-            <select className="field" value={form.category_id} onChange={(event) => updateForm('category_id', event.target.value)}>
-              <option value="">{t('products.noCategory')}</option>
-              {categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
-            </select>
-          </FormField>
           <FormField label={t('common.description')}>
             <textarea className="field min-h-28 resize-y" value={form.description} onChange={(event) => updateForm('description', event.target.value)} />
           </FormField>
